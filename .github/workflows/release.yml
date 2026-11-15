@@ -47,5 +47,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MORPHE_SIGNING_KEY: ""
-          
+
+      - name: Upload Patch Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: morphe-patches
+          path: patches/build/libs/patches-*.mpp
           
