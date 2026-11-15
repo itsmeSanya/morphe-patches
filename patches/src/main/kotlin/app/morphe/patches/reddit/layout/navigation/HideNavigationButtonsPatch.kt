@@ -8,8 +8,10 @@
 package app.morphe.patches.reddit.layout.navigation
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.mutableClassDefBy
 import app.morphe.patcher.patch.patch
+import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
 import app.morphe.patches.reddit.misc.settings.settingsPatch
 import app.morphe.patches.reddit.misc.version.versionCheckPatch
@@ -32,7 +34,6 @@ val hideNavigationButtonsPatch = patch(
     dependsOn(settingsPatch, versionCheckPatch)
 
     execute {
-        // Target Reddit's default package/SMS handling class context or inject direct override
         val targetClass = BottomNavScreenListBuilderFingerprint.method.definingClass
 
         mutableClassDefBy(targetClass).apply {
@@ -56,6 +57,21 @@ val hideNavigationButtonsPatch = patch(
                     )
                 }
             )
+        }
+
+        BottomNavScreenListBuilderFingerprint.let {
+            it.method.apply {
+                val targetIndex = it.instructionMatches.last().index
+                val freeRegister = findFreeRegister(targetIndex, 0)
+
+                addInstructions(
+                    targetIndex + 1,
+                    """
+                        invoke-static {}, $targetClass->vidditOverridePackage()Ljava/lang/String;
+                        move-result-object v$freeRegister
+                    """
+                )
+            }
         }
 
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
