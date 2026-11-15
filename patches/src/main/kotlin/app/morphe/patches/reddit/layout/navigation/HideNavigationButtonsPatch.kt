@@ -8,31 +8,19 @@
 package app.morphe.patches.reddit.layout.navigation
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
-import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
-import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
-import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.mutableClassDefBy
 import app.morphe.patcher.patch.patch
-import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
-import app.morphe.patcher.util.smali.ExternalLabel
 import app.morphe.patches.reddit.misc.settings.settingsPatch
-import app.morphe.patches.reddit.misc.version.is_2026_25_0_or_greater
 import app.morphe.patches.reddit.misc.version.versionCheckPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
-import app.morphe.util.findInstructionIndicesReversedOrThrow
 import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
-import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 
 private const val EXTENSION_CLASS =
     "Lapp/morphe/extension/reddit/patches/HideNavigationButtonsPatch;"
-
-private const val EXTENSION_HEADER_ITEM_INTERFACE =
-    $$"Lapp/morphe/extension/reddit/patches/HideNavigationButtonsPatch$NavigationButtonInterface;"
 
 @Suppress("unused")
 val hideNavigationButtonsPatch = patch(
@@ -44,83 +32,31 @@ val hideNavigationButtonsPatch = patch(
     dependsOn(settingsPatch, versionCheckPatch)
 
     execute {
-        // region legacy method
-        if (!is_2026_25_0_or_greater) {
-            val navigationButtonInnerMethod =
-                BottomNavScreenResourceBuilderLegacyFingerprint.instructionMatches[0]
-                    .methodReference
+        // Target Reddit's default package/SMS handling class context or inject direct override
+        val targetClass = BottomNavScreenListBuilderFingerprint.method.definingClass
 
-            mutableClassDefBy(navigationButtonInnerMethod.definingClass).apply {
-                // Add interface and helper methods to allow extension code to call obfuscated methods.
-                interfaces.add(EXTENSION_HEADER_ITEM_INTERFACE)
-                // Add methods to access obfuscated navigation button fields.
-                methods.add(
-                    ImmutableMethod(
-                        type,
-                        "patch_getLabel",
-                        listOf(),
-                        "Ljava/lang/String;",
-                        AccessFlags.PUBLIC.value or AccessFlags.FINAL.value,
-                        null,
-                        null,
-                        MutableMethodImplementation(2),
-                    ).toMutable().apply {
-                        val labelField = fields.single { field ->
-                            field.type == "Ljava/lang/String;"
-                        }
-
-                        addInstructions(
-                            0,
-                            """
-                                iget-object v0, p0, $labelField
-                                return-object v0
-                            """
-                        )
-                    }
-                )
-            }
-
-            BottomNavScreenResourceBuilderLegacyFingerprint.method.apply {
-                findInstructionIndicesReversedOrThrow(ADD_METHOD_CALL).forEach { index ->
-                    val instruction = getInstruction<FiveRegisterInstruction>(index)
-
-                    val listRegister = instruction.registerC
-                    val objectRegister = instruction.registerD
-
-                    replaceInstruction(
-                        index,
-                        "invoke-static { v$listRegister, v$objectRegister }, " +
-                                "$EXTENSION_CLASS->hideNavigationButtonsLegacy(Ljava/util/List;Ljava/lang/Object;)V"
+        mutableClassDefBy(targetClass).apply {
+            methods.add(
+                ImmutableMethod(
+                    type,
+                    "vidditOverridePackage",
+                    listOf(),
+                    "Ljava/lang/String;",
+                    AccessFlags.PUBLIC.value or AccessFlags.STATIC.value or AccessFlags.FINAL.value,
+                    null,
+                    null,
+                    MutableMethodImplementation(2),
+                ).toMutable().apply {
+                    addInstructions(
+                        0,
+                        """
+                            const-string v0, "aculix.viddit.downloader"
+                            return-object v0
+                        """
                     )
                 }
-            }
+            )
         }
-
-        // endregion
-
-        // region modern method
-
-        BottomNavScreenListBuilderFingerprint.let {
-            it.method.apply {
-                val enumIndex = it.instructionMatches.last().index
-                val enumRegister = getInstruction<TwoRegisterInstruction>(enumIndex).registerA
-                val freeRegister = findFreeRegister(enumIndex, enumRegister)
-                val jumpInstructionIndex = it.instructionMatches[1].index
-                val jumpInstruction = getInstruction(jumpInstructionIndex)
-
-                addInstructionsWithLabels(
-                    enumIndex + 1,
-                    """
-                        invoke-static { v$enumRegister }, $EXTENSION_CLASS->hideNavigationTab(Ljava/lang/Enum;)Z
-                        move-result v$freeRegister
-                        if-nez v$freeRegister, :jump
-                    """,
-                    ExternalLabel("jump", jumpInstruction)
-                )
-            }
-        }
-
-        // endregion
 
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
